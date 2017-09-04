@@ -1,0 +1,238 @@
+#*  vert.x  *#
+<script src="/resources/js/vertx/socket.io.js"></script>
+<script src="/resources/js/vertx/prettify.js"></script>
+<script>
+    /**
+     * socket.io event 정리
+     * event send : socket.emit('이벤트명',{메세지});
+     * event 받기 : socket.on('이벤트명', function(data){ ... });
+     * event 나를 제외한 다른 클라이언트에게 이벤트 send : socket.broadcast.emit('이벤트명', {메세지});
+     * event 나를 포함한 모든 클라이어느에게 이벤트 보내기 : io.sockets.emit('이벤트명', function(data){ ... });
+     * 내 소켓이 아닌 다른 특정 소켓에게 이벤트 보내기 : io.sockets(socket_id).emit('이벤트명', function(data){ ... });
+     */
+    var socket;
+    var send_id = '$utils.getSession('login').userid';
+    var send_name = '$utils.getSession('login').name';
+    $(document).ready(function () {
+        socket = io.connect('$utils.getProrValByVertx('url')' + ':' + '$utils.getProrValByVertx('port')');
+        // 로그아웃
+        $(window).unload(function (event) {
+            socket.emit('disconn', {
+                seq: $utils.getSession('login').seq,
+                name: '$utils.getSession('login').name',
+                userid: '$utils.getSession('login').userid',
+                dept: '$utils.getSession('login').dept',
+                grade: '$utils.getSession('login').grade'
+            });
+        });
+        // socket 연결, 로그인
+        socket.emit('connection', {
+            seq: $utils.getSession('login').seq,
+            name: '$utils.getSession('login').name',
+            userid: '$utils.getSession('login').userid',
+            dept: '$utils.getSession('login').dept',
+            grade: '$utils.getSession('login').grade'
+        });
+        /* 접속한 사원 리스트 */
+        socket.on('memberlist', function (data) {   // json 이니까 parse해서 사용
+            var data = JSON.parse(data);
+            var listHTML = '';
+            $('#loginCnt').html(data.length + '명');
+            $('#loginList').html('');
+            $.each(data, function (index, value) {
+                listHTML = '<li> <a href="#">' + value.name + '</a> ';
+                if ($utils.getSession('login').seq!=value.seq){
+                    listHTML += '<ul class="login-sub-menu"> ' +
+                            '<li><a href= "#" onclick ="chatFn(\'' + value.userid + '\');return false;"> 1:1 채팅 </a></li> ' +
+                            '</ul> ';
+                }
+                listHTML += '</li>';
+                $('#loginList').append(listHTML);
+            });
+        });
+        /* 채팅방에 초대할 사람 리스트 */
+        socket.on('joinlist', function (data) {
+            data = JSON.parse(data);
+            data.memberList.forEach(function (item) {
+                if (item == send_id) {
+                    socket.emit('join', { seq: data.seq, userId: send_id });  // 채팅방 초대
+                }
+            });
+        });
+        socket.on('msg', function (data) {
+            var room_id = 'chat_window_' + data.seq;
+            $('#' + room_id).find('div[name="chat_content"]').append('<div class="notice-msg">' + data.userId + '님이 입장하셨습니다.</div>');
+        });
+        socket.on('resp', function (data) {
+            data = JSON.parse(data);
+            var room_id = 'chat_window_' + data.seq;
+            if (send_id == data.sendId) {
+                $('#' + room_id).find('div[name="chat_content"]').append(createSendDiv(data.msg, data.date));
+               scrollDownFn(room_id);
+            } else {
+                if($('#' + room_id).length == 0) {
+                    noticeMsg(data.seq, data.sendId, data.msg, data.date); // 채팅방 열려있는지 확인
+                }else {
+                    console.log(':::::::::::::::::1');
+                    console.log($('#' + room_id).find('div[name="chat_content"]').children(':last').offset());
+                    $('#' + room_id).find('div[name="chat_content"]').append(createReceiveDiv(data.msg, data.date)); // 메세지 push
+                    scrollDownFn(room_id);
+                }
+            }
+        });
+    });
+    /* 메세지 전송 */
+    function sendFn(tag) {
+        var form = $(tag).closest('div[id^="chat_window"]');
+        var date = new Date();
+        var msg = form.find('input[name="sendVal"]').val();
+        form.find('input[name="sendVal"]').val('');
+        socket.emit('send', {
+            seq: form.find('input[name="roomSeq"]').val(),
+            sendId: form.find('input[name="sendId"]').val(),
+            msg: msg
+        });
+    }
+    // 미확인 메세지 추가
+    function noticeMsg(seq, sendId, msg, date) {
+        console.log($('#notice_cnt').html());
+        var num = ($('#notice_cnt').html() == '') ? 1 : parseInt($('#notice_cnt').html()) + 1;
+//        $('#notice_btn').addClass('disabled');
+        $('#notice_cnt').html(num);
+        var div = '<li> ' +
+                '<a href="#" onclick ="openChatFn(\''+seq+'\');return false;"> ' +
+                '<h4> ' + sendId +    // 보낸 사람
+                '<small><i class="fa fa-clock-o"></i> ' + date + '</small></h4>' + // 경과 시간
+                '<p>' + msg + '</p>' + // 메세지 내용
+                '</a>' +
+                '</li>';
+        $('#notice_msg .header').html('You have ' + num + ' messages');
+        $('#notice_msg').find('.menu').prepend(div);
+    }
+
+    /* 방 열기room 번호로 연다 ( 기존에 join 등록한 경우 ) */
+    function openChatFn(seq) {
+        $.ajax({
+            type: 'get',
+            data: { 'seq': seq },
+            url: '/chat/content',
+            dataType: 'json',
+            error: function (e) {
+                console.log(e);
+            },
+            success: function (data) {
+                createRoomDiv(seq, seq, msgListDiv(data));
+            }
+        });
+    }
+
+    /* 방 만들기 */
+    function chatFn(receive_id) {
+        $.ajax({
+            type: 'get',
+            data: {
+                'sendId': send_id,
+                'receiveId': receive_id
+            },
+            url: '/chat/inroom',
+            dataType: 'json',
+            error: function (e) {
+                console.log(e);
+            },
+            success: function (data) {
+                createRoomDiv(data.param.seq, data.param.receiveId, msgListDiv(data.content));
+            }
+        });
+    }
+    // 스크롤 맨 아래로 이동
+    function scrollDownFn(room_id){
+        var offset = $('#' + room_id).find('div[name="chat_content"]').children(':last').offset();
+        $('#' + room_id).find('div[name="chat_content"]').animate( { scrollTop: offset.top},100);
+    }
+
+    // 메세지 리스트 생성 DIV ( 이전 메세지 리스트 )
+    function msgListDiv(contentList) {
+        var content = '';
+        $.each(contentList, function (index, data) {
+            // 보낸 사람
+            if (send_id == data.sendId) {
+                content += createSendDiv(data.msg, data.date);
+            } else {
+                content += createReceiveDiv(data.msg, data.date);
+            }
+        });
+        return content;
+    }
+    // 메세지 전송 DIV
+    function createSendDiv(content, date) {
+        var div = '';
+        div = '<div class="row msg_container base_sent">' +
+                '<div class="col-md-10 col-xs-10">' +
+                '<div class="messages msg_sent" name="send_content">' +
+                '<p>' + content + '</p>' +
+                '<time datetime="' + new Date + '">' + new Date(date).toLocaleString() + '</time>' +
+                '</div> ' +
+                '</div>' +
+                '<div class="col-md-2 col-xs-2 avatar"> ' +
+                '<img src="http://www.bitrebels.com/wp-content/uploads/2011/02/Original-Facebook-Geek-Profile-Avatar-1.jpg" class="img-responsive"> ' +
+                '</div> ' +
+                '</div>';
+        return div;
+    }
+
+    // 메세지 수신 DIV
+    function createReceiveDiv(content, date) {
+        var div = '';
+        div = '<div class="row msg_container base_receive">' +
+                '<div class="col-md-2 col-xs-2 avatar">' +
+                '<img src="http://www.bitrebels.com/wp-content/uploads/2011/02/Original-Facebook-Geek-Profile-Avatar-1.jpg" class="img-responsive">' +
+                '</div>' +
+                '<div class="col-xs-10 col-md-10">' +
+                '<div class="messages msg_receive">' +
+                '<p>' + content + '</p>' +
+                '<time>' + new Date(date).toLocaleString() + '</time>' +
+                '</div>' +
+                '</div>' +
+                '</div>';
+        return div;
+    }
+     // 채팅방 생성 DIV
+    function createRoomDiv(seq, title, content) {
+        var size = $(".chat-window:last-child").css("margin-right");
+        size_total = parseInt((size == undefined)? 0 : size) + 400;
+        var div = '<div class="row chat-window col-xs-5 col-md-3 chat" style="margin-right:' + size_total + ';" id="chat_window_' + seq + '"> ' +
+                        '<input type="hidden" name="roomSeq" value ="' + seq + '"/> ' +
+                        '<input type="hidden" name="sendId" value =" ' + send_id +  ' "/> ' +
+                        '<div class="col-xs-12 col-md-12"> ' +
+                            '<div class="panel panel-default"> ' +
+                                '<div class="panel-heading top-bar"> ' +
+                                    '<div class="col-md-8 col-xs-8"> ' +
+                                        '<h3 class="panel-title" name="title"><span class="glyphicon glyphicon-comment"></span> Chat - ' + title + '</h3> ' +
+                                    '</div> ' +
+                                    '<div class="col-md-4 col-xs-4" style="text-align: right;"> ' +
+                                        '<a href="#"><span name="closeBtn" class="glyphicon glyphicon-remove icon_close" data-id="chat_window_' + seq + '"></span></a> ' +
+                                    '</div> ' +
+                                '</div> ' +
+                            '<div class="panel-body msg_container_base" name="chat_content">';
+                                if('' != content) div += content;
+                            div += '</div> ' +
+                            '<div class="panel-footer"> ' +
+                                '<div class="input-group"> <input name="sendVal" type="text" class="form-control input-sm chat_input" placeholder="Write your message here..." ' + 'onkeydown="if(event.keyCode == 13){sendFn($(this));}"/> ' +
+                                                           '<span class="input-group-btn"> <button class="btn btn-primary btn-sm" onclick="sendFn($(this));">Send</button></span> ' +
+                                '</div> ' +
+                            '</div> ' +
+                        '</div> ' +
+                    '</div> ' +
+                '</div>';
+        $('.container').append(div);
+        scrollDownFn('chat_window_'+ seq);
+    }
+
+    // 채팅창 닫기 이벤트
+    $(document).on('click', 'span[name="closeBtn"]', function (e) {
+        console.log($(this));
+        $('#' + $(this).attr('data-id')).remove();
+    });
+</script>
+<link rel="stylesheet" href="/resources/css/chat.css"/>
+<div class="container"></div>

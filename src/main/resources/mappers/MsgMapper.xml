@@ -1,0 +1,69 @@
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="efuture.persistence.MsgDAO">
+
+    <!-- 방 유무 체크 -->
+    <select id="existRoom" parameterType="efuture.domain.msg.MsgDTO" resultType="efuture.domain.msg.MsgDTO">
+        SELECT
+            max(a.seq) as seq,
+            case ifnull(max(a.seq),0)
+            when 0 then 'FALSE'
+            else 'TRUE'
+            end as existYn
+        FROM
+        tb_msg_room a, tb_msg_room b
+        WHERE
+        a.seq = b.seq AND
+        a.userid = #{sendId} AND
+        b.userid = #{receiveId}
+    </select>
+
+    <!--  방 유무 체크 및 방 가져오기 -->
+    <select id="checkRoom" parameterType="efuture.domain.msg.MsgDTO" resultType="hashmap">
+        SELECT
+            ifnull(max(a.seq),(select max(seq)+1 from tb_msg_room)) as seq,
+            case ifnull(max(a.seq),0)
+              when 0 then 'FALSE'
+              else 'TRUE'
+            end as existYn
+        FROM
+            tb_msg_room a, tb_msg_room b
+        WHERE
+            a.seq = b.seq AND
+            a.userid = #{sendId} AND
+            b.userid = #{receiveId}
+    </select>
+    <!--  최근 방 seq 가져오기 -->
+    <select id="maxRoomSeq" parameterType="efuture.domain.msg.MsgDTO" resultType="int">
+        select max(seq) as seq from tb_msg_room
+    </select>
+
+    <!-- 방 접속 리스트 -->
+    <select id ="roomMemberList" parameterType="int" resultType="string">
+        select userid from tb_msg_room where seq = #{seq}
+    </select>
+
+    <!-- 메세지 리스트  -->
+    <select id ="getMsgList" parameterType="efuture.domain.msg.MsgDTO" resultType="efuture.domain.msg.MsgVO">
+        SELECT sendId, msg, date
+          FROM tb_msg
+        WHERE seq = #{seq}
+        ORDER BY date DESC
+        limit #{startNo}, #{endNo}
+    </select>
+
+    <!--채티방 리스트 (userid 기준)-->
+    <select id ="getRoomList" parameterType="string" resultType="string">
+        SELECT seq FROM tb_msg_room WHERE userid = #{userId}
+    </select>
+
+    <!-- 방 접속 리스트 -->
+    <insert id ="insertRoom" parameterType="hashmap" >
+        insert into tb_msg_room (seq, userid) values (#{seq}, #{userId})
+    </insert>
+
+    <!-- 메세지 저장 -->
+    <insert id ="insertMsg" parameterType="efuture.domain.msg.MsgVO" >
+        insert into tb_msg (seq, sendId, msg, date) values (#{seq}, #{sendId}, #{msg}, #{date})
+    </insert>
+</mapper>
