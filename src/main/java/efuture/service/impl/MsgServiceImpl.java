@@ -24,7 +24,6 @@ public class MsgServiceImpl implements MsgService{
     public RoomVO getRoomInfo(int seq) {
         return session.getMapper(MsgDAO.class).getRoomInfo(seq);
     }
-
     @Override
     public MsgDTO existRoom(MsgDTO vo) {
         return session.getMapper(MsgDAO.class).existRoom(vo);

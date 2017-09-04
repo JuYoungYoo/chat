@@ -13,8 +13,6 @@ import java.util.ArrayList;
 public interface MsgService {
 
     /*  방 유무 체크  */
-    RoomVO getRoomInfo(int seq);
-    /*  방 유무 체크 2 */
     MsgDTO existRoom(MsgDTO vo);
     /*  Max seq 가져오기 */
     int maxRoomSeq(MsgDTO vo);

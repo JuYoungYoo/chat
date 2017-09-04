@@ -11,9 +11,7 @@ import java.util.ArrayList;
  * Created by user on 2017-08-07.
  */
 public interface MsgDAO {
-    /*  방 유무 체크  */
-    RoomVO getRoomInfo(int seq);
-    /*  방 유무 체크 2  */
+    /*  방 유무 체크   */
     MsgDTO existRoom(MsgDTO vo);
     /*  최근 방 seq 가져오기 */
     int maxRoomSeq(MsgDTO vo);
